@@ -40,29 +40,29 @@ Uses a WebSocket relay server for sharing across different networks. The relay i
 
 ## Installation
 
-### Quick Start (local plugin)
+### From GitHub (recommended)
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/NAMYUNWOO/claudeSpread.git
-   ```
-
-2. Launch Claude Code with the plugin loaded:
-   ```bash
-   claude --plugin-dir ./claudeSpread
-   ```
-
-3. For relay mode, install the `websockets` package:
-   ```bash
-   pip install websockets
-   ```
-
-### Via Marketplace
-
-If a [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) is configured with this plugin:
+In Claude Code, run:
 
 ```bash
-/plugin install NAMYUNWOO/claudeSpread
+# 1. Add the marketplace
+/plugin marketplace add NAMYUNWOO/claudeSpread
+
+# 2. Install the plugin
+/plugin install claude-spread@claude-spread
+```
+
+For relay mode, also install the `websockets` package:
+
+```bash
+pip install websockets
+```
+
+### Local Development
+
+```bash
+git clone https://github.com/NAMYUNWOO/claudeSpread.git
+claude --plugin-dir ./claudeSpread
 ```
 
 ## Dependencies
