@@ -49,7 +49,7 @@ In Claude Code, run:
 /plugin marketplace add NAMYUNWOO/claudeSpread
 
 # 2. Install the plugin
-/plugin install claude-spread@claude-spread
+/plugin install claude-spread@NAMYUNWOO
 ```
 
 For relay mode, also install the `websockets` package:
