@@ -44,10 +44,10 @@ Uses a WebSocket relay server for sharing across different networks. The relay i
 
 ```bash
 # Install from GitHub
-/install-plugin NAMYUNWOO/claudeSpread
+/plugin install NAMYUNWOO/claudeSpread
 
 # Or install from a local directory
-claude plugin install ./claudeSpread
+/plugin install ./claudeSpread
 ```
 
 ### Manual Installation
@@ -59,7 +59,7 @@ claude plugin install ./claudeSpread
 
 2. Install as a local plugin:
    ```bash
-   claude plugin install ./claudeSpread
+   /plugin install ./claudeSpread
    ```
 
 3. For relay mode, install the `websockets` package:
