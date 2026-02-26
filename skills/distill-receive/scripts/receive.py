@@ -190,11 +190,12 @@ async def relay_receive(passphrase: str, relay_url: str, room_id: str) -> str | 
 
     async with websockets.connect(relay_url) as ws:
         # Join room
-        await ws.send(f"JOIN_ROOM {room_id}")
-        response = await ws.recv()
+        await common.send_msg_ws(ws, {"type": "JOIN_ROOM", "room_id": room_id})
+        response = await common.recv_msg_ws(ws)
 
-        if response != "ROOM_JOINED":
-            if "not_found" in response or "NOT_FOUND" in response.upper():
+        if not response or response.get("type") != "ROOM_JOINED":
+            reason = response.get("reason", "") if response else ""
+            if "not_found" in reason:
                 print(f"Error: Room '{room_id}' not found.", file=sys.stderr)
             else:
                 print(f"Error: Failed to join room: {response}", file=sys.stderr)

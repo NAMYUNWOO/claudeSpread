@@ -1,0 +1,10 @@
+{
+  "name": "claude-spread",
+  "description": "Securely share Claude Code session distillations over LAN or relay",
+  "version": "1.0.0",
+  "author": {
+    "name": "NAMYUNWOO"
+  },
+  "repository": "https://github.com/NAMYUNWOO/claudeSpread",
+  "license": "MIT"
+}

@@ -42,23 +42,27 @@ async def relay_mode(passphrase, payload_text, relay_url):
 
     async with websockets.connect(relay_url) as ws:
         # Create room
-        await ws.send("CREATE_ROOM")
-        response = await ws.recv()
+        await common.send_msg_ws(ws, {"type": "CREATE_ROOM"})
+        response = await common.recv_msg_ws(ws)
 
-        if not response.startswith("ROOM_CREATED "):
+        if not response or response.get("type") != "ROOM_CREATED":
             print(f"Error: failed to create room: {response}", file=sys.stderr)
             sys.exit(1)
 
-        room_id = response.split(" ", 1)[1].strip()
+        room_id = response["room_id"]
         print(f"Room created: {room_id}", flush=True)
         print(f"Tell the receiver to run: /distill-receive --relay --room {room_id} <passphrase>", flush=True)
         print(f"Sharing until Ctrl+C...\n", flush=True)
 
         # Loop: wait for peers
         while True:
-            control = await ws.recv()
+            control = await common.recv_msg_ws(ws)
+            if not control:
+                break
 
-            if control == "PEER_JOINED":
+            msg_type = control.get("type", "")
+
+            if msg_type == "PEER_JOINED":
                 try:
                     await handle_peer_ws(ws, passphrase, payload_salt, payload_key, enc_nonce, ciphertext)
                     total_served += 1
@@ -66,7 +70,7 @@ async def relay_mode(passphrase, payload_text, relay_url):
                 except Exception as e:
                     print(f"  [ERROR] Error handling peer: {e}", file=sys.stderr, flush=True)
 
-            elif control == "PEER_DISCONNECTED":
+            elif msg_type == "PEER_DISCONNECTED":
                 # Peer left before or after handshake, continue waiting
                 continue
             else:

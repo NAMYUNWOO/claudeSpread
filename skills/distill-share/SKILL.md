@@ -63,7 +63,7 @@ Write this distillation to a temporary file at `/tmp/claude-distill-payload.md`.
 Run the serve.py script with the user's passphrase:
 
 ```bash
-python3 .claude/skills/distill-share/scripts/serve.py "{{passphrase}}" /tmp/claude-distill-payload.md
+python3 skills/distill-share/scripts/serve.py "{{passphrase}}" /tmp/claude-distill-payload.md
 ```
 
 This will:
@@ -82,7 +82,7 @@ Tell the user:
 If the user passes `--relay`, use the relay server for remote sharing instead of LAN/mDNS.
 
 ```bash
-python3 .claude/skills/distill-share/scripts/serve.py --relay "{{passphrase}}" /tmp/claude-distill-payload.md
+python3 skills/distill-share/scripts/serve.py --relay "{{passphrase}}" /tmp/claude-distill-payload.md
 ```
 
 This will:

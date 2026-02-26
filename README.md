@@ -6,8 +6,8 @@ Securely share [Claude Code](https://claude.ai/claude-code) session distillation
 
 Claude Spread adds two skills to Claude Code:
 
-- **`/distill-share`** — Generates a structured summary (distillation) of the current session and serves it to receivers, encrypted with a shared passphrase.
-- **`/distill-receive`** — Discovers and receives a distillation from a sender, decrypts it, and presents it so you can continue where the previous session left off.
+- **`/claude-spread:distill-share`** — Generates a structured summary (distillation) of the current session and serves it to receivers, encrypted with a shared passphrase.
+- **`/claude-spread:distill-receive`** — Discovers and receives a distillation from a sender, decrypts it, and presents it so you can continue where the previous session left off.
 
 All data is encrypted end-to-end with AES-256-GCM. The passphrase never leaves your machines.
 
@@ -19,10 +19,10 @@ Uses mDNS (Bonjour) for zero-config discovery on the local network.
 
 ```bash
 # Sender
-/distill-share mypassphrase
+/claude-spread:distill-share mypassphrase
 
 # Receiver (same network)
-/distill-receive mypassphrase
+/claude-spread:distill-receive mypassphrase
 ```
 
 ### Relay Mode (remote)
@@ -31,21 +31,36 @@ Uses a WebSocket relay server for sharing across different networks. The relay i
 
 ```bash
 # Sender
-/distill-share --relay mypassphrase
+/claude-spread:distill-share --relay mypassphrase
 # → displays a 6-character room code
 
 # Receiver (anywhere)
-/distill-receive --relay --room <room_code> mypassphrase
+/claude-spread:distill-receive --relay --room <room_code> mypassphrase
 ```
 
 ## Installation
 
-1. Copy this repository into your project (or clone it):
+### As a Claude Code Plugin
+
+```bash
+# Install from GitHub
+/install-plugin NAMYUNWOO/claudeSpread
+
+# Or install from a local directory
+claude plugin install ./claudeSpread
+```
+
+### Manual Installation
+
+1. Clone this repository:
    ```bash
-   git clone git@github.com:NAMYUNWOO/claudeSpread.git .claude-spread
+   git clone https://github.com/NAMYUNWOO/claudeSpread.git
    ```
 
-2. The `.claude/skills/` directory contains the skill definitions that Claude Code discovers automatically.
+2. Install as a local plugin:
+   ```bash
+   claude plugin install ./claudeSpread
+   ```
 
 3. For relay mode, install the `websockets` package:
    ```bash
@@ -61,19 +76,22 @@ Uses a WebSocket relay server for sharing across different networks. The relay i
 ## Project Structure
 
 ```
-.claude/skills/
-├── distill-share/
-│   ├── SKILL.md              # Skill definition for sharing
-│   └── scripts/
-│       ├── common.py         # Shared crypto & protocol utilities
-│       └── serve.py          # TCP/WebSocket server
-└── distill-receive/
-    ├── SKILL.md              # Skill definition for receiving
-    └── scripts/
-        ├── common.py         # Shared crypto & protocol utilities
-        └── receive.py        # TCP/WebSocket client
-
-RELAY_SERVER_SPEC.md          # Relay server implementation spec
+claudeSpread/
+├── .claude-plugin/
+│   └── plugin.json              # Plugin manifest
+├── skills/
+│   ├── distill-share/
+│   │   ├── SKILL.md             # Skill definition for sharing
+│   │   └── scripts/
+│   │       ├── common.py        # Shared crypto & protocol utilities
+│   │       └── serve.py         # TCP/WebSocket server
+│   └── distill-receive/
+│       ├── SKILL.md             # Skill definition for receiving
+│       └── scripts/
+│           ├── common.py        # Shared crypto & protocol utilities
+│           └── receive.py       # TCP/WebSocket client
+├── RELAY_SERVER_SPEC.md         # Relay server implementation spec
+└── README.md
 ```
 
 ## Security

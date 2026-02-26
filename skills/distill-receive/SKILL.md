@@ -23,7 +23,7 @@ You are receiving a session distillation from another Claude Code instance on th
 Run the receive.py script with the user's passphrase:
 
 ```bash
-python3 .claude/skills/distill-receive/scripts/receive.py "{{passphrase}}"
+python3 skills/distill-receive/scripts/receive.py "{{passphrase}}"
 ```
 
 This will:
@@ -40,7 +40,7 @@ Display the received distillation content to the user in full. This is a handoff
 If the user passes `--relay --room <room_code>`, use the relay server instead of LAN/mDNS.
 
 ```bash
-python3 .claude/skills/distill-receive/scripts/receive.py --relay --room "{{room_code}}" "{{passphrase}}"
+python3 skills/distill-receive/scripts/receive.py --relay --room "{{room_code}}" "{{passphrase}}"
 ```
 
 This will:
