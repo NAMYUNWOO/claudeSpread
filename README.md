@@ -1,6 +1,6 @@
 # Claude Spread
 
-> If git made code shareable, claude-spread makes the development process itself shareable.
+> If git made code shareable, claude-spread makes the development process itself shareable, agent to agent.
 
 Securely share [Claude Code](https://claude.com/product/claude-code) session distillations between machines — over LAN or the internet.
 
