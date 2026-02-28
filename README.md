@@ -27,6 +27,21 @@ Uses mDNS (Bonjour) for zero-config discovery on the local network.
 /claude-spread:distill-receive mypassphrase
 ```
 
+> **Firewall note:** The sender opens a random TCP port for the receiver to connect. If your firewall blocks incoming connections, the receiver will discover the service via mDNS but fail to connect (timeout). Make sure the sender's firewall allows inbound TCP on the assigned port:
+>
+> ```bash
+> # Linux (ufw)
+> sudo ufw allow <port>/tcp
+>
+> # Linux (iptables)
+> sudo iptables -A INPUT -p tcp --dport <port> -j ACCEPT
+>
+> # macOS
+> # macOS will show a "Allow incoming connections?" dialog automatically.
+> ```
+>
+> Alternatively, use **Relay Mode** to bypass firewall restrictions entirely.
+
 ### Relay Mode (remote)
 
 Uses a WebSocket relay server for sharing across different networks. The relay is a dumb pipe — it cannot decrypt your data.

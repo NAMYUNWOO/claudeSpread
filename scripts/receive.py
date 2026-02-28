@@ -164,6 +164,9 @@ def receive(passphrase: str, host: str, port: int) -> str | None:
 
     if sock is None:
         print(f"Error: cannot connect to {host}:{port}", file=sys.stderr)
+        print("Hint: The sender's firewall may be blocking the port. "
+              "Ask the sender to allow inbound TCP on this port, "
+              "or use --relay mode to bypass firewall restrictions.", file=sys.stderr)
         return None
 
     try:
