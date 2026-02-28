@@ -56,14 +56,14 @@ Analyze the full conversation history and produce a Markdown document in the fol
 (Critical context that the next person needs to know to continue this work effectively)
 ```
 
-Write this distillation to a temporary file at `/tmp/claude-distill-payload.md`.
+Write this distillation to a temporary file at `${CLAUDE_PLUGIN_ROOT}/.tmp/claude-distill-payload.md`.
 
 ## Step 2: Start the sharing server
 
 Run the serve.py script with the user's passphrase:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py "{{passphrase}}" /tmp/claude-distill-payload.md
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py "{{passphrase}}" ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-distill-payload.md
 ```
 
 This will:
@@ -82,7 +82,7 @@ Tell the user:
 If the user passes `--relay`, use the relay server for remote sharing instead of LAN/mDNS.
 
 ```bash
-python3 skills/distill-share/scripts/serve.py --relay "{{passphrase}}" /tmp/claude-distill-payload.md
+python3 skills/distill-share/scripts/serve.py --relay "{{passphrase}}" ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-distill-payload.md
 ```
 
 This will:

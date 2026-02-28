@@ -56,12 +56,12 @@ Analyze all memory files and produce a single, well-organized Markdown document:
 
 Consolidate, deduplicate, and organize the information clearly. Remove session-specific noise and keep only stable, reusable knowledge.
 
-Write the distilled memory to `/tmp/claude-memory-payload.md`.
+Write the distilled memory to `${CLAUDE_PLUGIN_ROOT}/.tmp/claude-memory-payload.md`.
 
 ### Step 3: Start the sharing server
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py "{{passphrase}}" /tmp/claude-memory-payload.md
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py "{{passphrase}}" ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-memory-payload.md
 ```
 
 Tell the user:
@@ -73,7 +73,7 @@ Tell the user:
 ### Step 1: Bundle memory files
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/memory-share/scripts/bundle.py /tmp/claude-memory-payload.json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/memory-share/scripts/bundle.py ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-memory-payload.json
 ```
 
 This bundles all `.md` files from the auto memory directory into a JSON file.
@@ -81,7 +81,7 @@ This bundles all `.md` files from the auto memory directory into a JSON file.
 ### Step 2: Start the sharing server
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py "{{passphrase}}" /tmp/claude-memory-payload.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py "{{passphrase}}" ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-memory-payload.json
 ```
 
 Tell the user:
@@ -93,7 +93,7 @@ Tell the user:
 If the user passes `--relay`, add the `--relay` flag to the serve.py command:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py --relay "{{passphrase}}" /tmp/claude-memory-payload.md
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve.py --relay "{{passphrase}}" ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-memory-payload.md
 ```
 
 Tell the user:
