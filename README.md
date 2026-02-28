@@ -68,7 +68,7 @@ In Claude Code, run:
 /plugin marketplace add NAMYUNWOO/claudeSpread
 
 # 2. Install the plugin
-/plugin install claude-spread@NAMYUNWOO
+/plugin install claude-spread@fire-amulet
 ```
 
 For relay mode, also install the `websockets` package:
