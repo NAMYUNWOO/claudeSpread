@@ -7,8 +7,14 @@ import hmac
 import json
 import os
 import struct
-import subprocess
-import sys
+
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+except ImportError:
+    raise ImportError(
+        "The 'cryptography' package is required. Install it with:\n"
+        "  pip install cryptography"
+    )
 
 PROTOCOL_VERSION = 1
 PBKDF2_ITERATIONS = 600_000
@@ -17,96 +23,22 @@ NONCE_LEN = 12
 KEY_LEN = 32
 MAX_AUTH_FAILURES = 3
 
-# Try to use the `cryptography` library; fall back to openssl CLI.
-try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    from cryptography.hazmat.primitives import hashes
 
-    def derive_key(passphrase: str, salt: bytes) -> bytes:
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=KEY_LEN,
-            salt=salt,
-            iterations=PBKDF2_ITERATIONS,
-        )
-        return kdf.derive(passphrase.encode("utf-8"))
+def derive_key(passphrase: str, salt: bytes) -> bytes:
+    """PBKDF2-HMAC-SHA256 key derivation (stdlib, no external deps)."""
+    return hashlib.pbkdf2_hmac(
+        "sha256", passphrase.encode("utf-8"), salt, PBKDF2_ITERATIONS, dklen=KEY_LEN,
+    )
 
-    def encrypt(key: bytes, plaintext: bytes) -> tuple[bytes, bytes]:
-        nonce = os.urandom(NONCE_LEN)
-        ct = AESGCM(key).encrypt(nonce, plaintext, None)
-        return nonce, ct
 
-    def decrypt(key: bytes, nonce: bytes, ciphertext: bytes) -> bytes:
-        return AESGCM(key).decrypt(nonce, ciphertext, None)
+def encrypt(key: bytes, plaintext: bytes) -> tuple[bytes, bytes]:
+    nonce = os.urandom(NONCE_LEN)
+    ct = AESGCM(key).encrypt(nonce, plaintext, None)
+    return nonce, ct
 
-    CRYPTO_BACKEND = "cryptography"
 
-except ImportError:
-    # ---------- openssl CLI fallback ----------
-
-    def derive_key(passphrase: str, salt: bytes) -> bytes:
-        # PBKDF2 via openssl
-        result = subprocess.run(
-            [
-                "openssl", "kdf", "-keylen", str(KEY_LEN),
-                "-kdfopt", f"pass:{passphrase}",
-                "-kdfopt", f"hexsalt:{salt.hex()}",
-                "-kdfopt", f"iter:{PBKDF2_ITERATIONS}",
-                "-kdfopt", "digest:SHA256",
-                "PBKDF2",
-            ],
-            capture_output=True, text=True,
-        )
-        if result.returncode != 0:
-            # Older openssl: use `dgst -pbkdf2` trick
-            raw = subprocess.run(
-                [
-                    "openssl", "enc", "-aes-256-gcm", "-pbkdf2",
-                    "-iter", str(PBKDF2_ITERATIONS),
-                    "-S", salt.hex(),
-                    "-k", passphrase,
-                    "-P",
-                ],
-                input=b"", capture_output=True, text=True,
-            )
-            for line in raw.stdout.splitlines():
-                if line.startswith("key="):
-                    return bytes.fromhex(line.split("=", 1)[1])
-            raise RuntimeError("openssl PBKDF2 key derivation failed")
-        hex_key = result.stdout.strip().replace(":", "")
-        return bytes.fromhex(hex_key)
-
-    def encrypt(key: bytes, plaintext: bytes) -> tuple[bytes, bytes]:
-        nonce = os.urandom(NONCE_LEN)
-        proc = subprocess.run(
-            [
-                "openssl", "enc", "-aes-256-gcm",
-                "-K", key.hex(),
-                "-iv", nonce.hex(),
-                "-nosalt",
-            ],
-            input=plaintext, capture_output=True,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError("openssl encryption failed")
-        return nonce, proc.stdout
-
-    def decrypt(key: bytes, nonce: bytes, ciphertext: bytes) -> bytes:
-        proc = subprocess.run(
-            [
-                "openssl", "enc", "-aes-256-gcm", "-d",
-                "-K", key.hex(),
-                "-iv", nonce.hex(),
-                "-nosalt",
-            ],
-            input=ciphertext, capture_output=True,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError("openssl decryption failed")
-        return proc.stdout
-
-    CRYPTO_BACKEND = "openssl"
+def decrypt(key: bytes, nonce: bytes, ciphertext: bytes) -> bytes:
+    return AESGCM(key).decrypt(nonce, ciphertext, None)
 
 
 # --------------- HMAC helper ---------------
