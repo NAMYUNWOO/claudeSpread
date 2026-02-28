@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 TCP client for distill-receive.
-Discovers mDNS service via macOS dns-sd, authenticates, and decrypts the payload.
+Discovers mDNS service (macOS dns-sd or Linux avahi-browse), authenticates,
+and decrypts the payload.
 
 Supports --relay mode for remote receiving via WebSocket relay server.
 """
@@ -9,7 +10,9 @@ Supports --relay mode for remote receiving via WebSocket relay server.
 import asyncio
 import json
 import os
+import platform
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -22,10 +25,22 @@ DEFAULT_RELAY_URL = "wss://relay.fireamulet.com"
 
 
 def discover_service(timeout: int = 10) -> tuple[str, str, int] | None:
-    """Use dns-sd -B to browse, then dns-sd -L to resolve."""
+    """Discover mDNS service. Uses dns-sd on macOS, avahi-browse on Linux."""
+    system = platform.system()
+    if system == "Darwin" and shutil.which("dns-sd"):
+        return _discover_dns_sd(timeout)
+    elif system == "Linux" and shutil.which("avahi-browse"):
+        return _discover_avahi(timeout)
+    else:
+        print("Error: no mDNS tool found (dns-sd or avahi-browse).", file=sys.stderr)
+        print("On Linux, install avahi-utils: sudo apt install avahi-utils", file=sys.stderr)
+        return None
 
-    # Step 1: Browse for service instances
-    print("Searching for service on local network...", flush=True)
+
+def _discover_dns_sd(timeout: int) -> tuple[str, str, int] | None:
+    """macOS: Use dns-sd -B to browse, then dns-sd -L to resolve."""
+
+    print("Searching for service on local network (dns-sd)...", flush=True)
     browse_proc = subprocess.Popen(
         ["dns-sd", "-B", "_claude-distill._tcp.", "local"],
         stdout=subprocess.PIPE,
@@ -40,11 +55,8 @@ def discover_service(timeout: int = 10) -> tuple[str, str, int] | None:
             line = browse_proc.stdout.readline()
             if not line:
                 break
-            # Look for Add lines: "... Add ... claude-distill-XXXXXXXX"
             if "Add" in line and "claude-distill-" in line:
-                # Extract the service instance name (last column)
                 parts = line.strip().split()
-                # Service name is typically the last field(s)
                 for i, part in enumerate(parts):
                     if part.startswith("claude-distill-"):
                         service_name = " ".join(parts[i:])
@@ -60,7 +72,6 @@ def discover_service(timeout: int = 10) -> tuple[str, str, int] | None:
 
     print(f"Found '{service_name}', connecting...", flush=True)
 
-    # Step 2: Resolve to get host and port
     resolve_proc = subprocess.Popen(
         ["dns-sd", "-L", service_name, "_claude-distill._tcp.", "local"],
         stdout=subprocess.PIPE,
@@ -76,7 +87,6 @@ def discover_service(timeout: int = 10) -> tuple[str, str, int] | None:
             line = resolve_proc.stdout.readline()
             if not line:
                 break
-            # Look for: "... can be reached at hostname:port ..."
             match = re.search(r'can be reached at\s+(\S+?):(\d+)', line)
             if match:
                 host = match.group(1)
@@ -87,6 +97,44 @@ def discover_service(timeout: int = 10) -> tuple[str, str, int] | None:
         resolve_proc.wait()
 
     if host and port:
+        return service_name, host, port
+    return None
+
+
+def _discover_avahi(timeout: int) -> tuple[str, str, int] | None:
+    """Linux: Use avahi-browse to discover and resolve service."""
+
+    print("Searching for service on local network (avahi)...", flush=True)
+    try:
+        result = subprocess.run(
+            ["avahi-browse", "-t", "-r", "-p", "_claude-distill._tcp"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+
+    service_name = None
+    host = None
+    port = None
+
+    for line in result.stdout.splitlines():
+        # avahi-browse -p output format: +;iface;protocol;name;type;domain
+        # resolved: =;iface;protocol;name;type;domain;hostname;address;port;txt
+        if not line.startswith("="):
+            continue
+        fields = line.split(";")
+        if len(fields) < 9:
+            continue
+        name = fields[3]
+        if "claude-distill-" not in name:
+            continue
+        service_name = name
+        host = fields[7]  # IP address
+        port = int(fields[8])
+        break
+
+    if service_name and host and port:
+        print(f"Found '{service_name}', connecting...", flush=True)
         return service_name, host, port
     return None
 

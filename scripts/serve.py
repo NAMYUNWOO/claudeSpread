@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 TCP server for distill-share.
-Registers an mDNS service via macOS dns-sd, accepts multiple clients,
+Registers an mDNS service (macOS dns-sd or Linux avahi), accepts multiple clients,
 authenticates via challenge-response, and sends AES-256-GCM encrypted payload.
 
 Supports --relay mode for remote sharing via WebSocket relay server.
@@ -15,10 +15,33 @@ import socket
 import subprocess
 import sys
 import threading
+import platform
+import shutil
 import uuid
 
 sys.path.insert(0, os.path.dirname(__file__))
 import common
+
+
+def register_mdns(service_name: str, port: int) -> subprocess.Popen:
+    """Register mDNS service. Uses dns-sd on macOS, avahi-publish on Linux."""
+    system = platform.system()
+    if system == "Darwin" and shutil.which("dns-sd"):
+        return subprocess.Popen(
+            ["dns-sd", "-R", service_name, "_claude-distill._tcp.", "local", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    elif system == "Linux" and shutil.which("avahi-publish"):
+        return subprocess.Popen(
+            ["avahi-publish", "-s", service_name, "_claude-distill._tcp", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        print(f"Warning: no mDNS tool found (dns-sd or avahi-publish). "
+              f"Receivers must connect directly via host:port.", file=sys.stderr, flush=True)
+        return None
 
 DEFAULT_RELAY_URL = "wss://relay.fireamulet.com"
 
@@ -138,12 +161,8 @@ def lan_mode(passphrase, payload_text):
     instance_id = uuid.uuid4().hex[:8]
     service_name = f"claude-distill-{instance_id}"
 
-    # Register mDNS via dns-sd (macOS)
-    dns_sd_proc = subprocess.Popen(
-        ["dns-sd", "-R", service_name, "_claude-distill._tcp.", "local", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    # Register mDNS service
+    mdns_proc = register_mdns(service_name, port)
 
     total_served = 0
     total_lock = threading.Lock()
@@ -213,7 +232,8 @@ def lan_mode(passphrase, payload_text):
     # Graceful shutdown
     def shutdown(signum, frame):
         print(f"\nSharing stopped. Total served: {total_served} receiver(s).", flush=True)
-        dns_sd_proc.terminate()
+        if mdns_proc:
+            mdns_proc.terminate()
         server_sock.close()
         sys.exit(0)
 

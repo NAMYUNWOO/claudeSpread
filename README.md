@@ -87,7 +87,8 @@ claude --plugin-dir ./claudeSpread
 ## Dependencies
 
 - **Python 3.10+**
-- **macOS** (LAN mode uses `dns-sd` for mDNS)
+- **macOS or Linux** (LAN mode uses `dns-sd` on macOS, `avahi-utils` on Linux)
+  - Linux: `sudo apt install avahi-utils`
 - **websockets** (only for relay mode): `pip install websockets`
 
 ## Project Structure
