@@ -1,6 +1,6 @@
 # Claude Spread
 
-Securely share [Claude Code](https://claude.ai/claude-code) session distillations between machines — over LAN or the internet.
+Securely share [Claude Code](https://claude.com/product/claude-code) session distillations between machines — over LAN or the internet.
 
 ## What It Does
 
