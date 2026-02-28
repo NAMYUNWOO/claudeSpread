@@ -4,10 +4,12 @@ Securely share [Claude Code](https://claude.ai/claude-code) session distillation
 
 ## What It Does
 
-Claude Spread adds two skills to Claude Code:
+Claude Spread adds skills to Claude Code for sharing session context and project memory:
 
 - **`/claude-spread:distill-share`** — Generates a structured summary (distillation) of the current session and serves it to receivers, encrypted with a shared passphrase.
 - **`/claude-spread:distill-receive`** — Discovers and receives a distillation from a sender, decrypts it, and presents it so you can continue where the previous session left off.
+- **`/claude-spread:memory-share`** — Shares your project's auto memory (`~/.claude/projects/<project>/memory/`) over the network. Supports distilled (default) and raw (`--raw`) modes.
+- **`/claude-spread:memory-receive`** — Receives shared project memory and installs it into your local auto memory directory.
 
 All data is encrypted end-to-end with AES-256-GCM. The passphrase never leaves your machines.
 
@@ -37,6 +39,23 @@ Uses a WebSocket relay server for sharing across different networks. The relay i
 # Receiver (anywhere)
 /claude-spread:distill-receive --relay --room <room_code> mypassphrase
 ```
+
+### Memory Sharing
+
+Share your project's accumulated auto memory (patterns, conventions, debugging insights) with another machine or team member.
+
+```bash
+# Share memory (Claude distills and organizes it first)
+/claude-spread:memory-share mypassphrase
+
+# Share memory raw (all .md files as-is)
+/claude-spread:memory-share --raw mypassphrase
+
+# Receive memory
+/claude-spread:memory-receive mypassphrase
+```
+
+Relay mode works the same way — add `--relay` to share across networks.
 
 ## Installation
 
@@ -76,18 +95,21 @@ claude --plugin-dir ./claudeSpread
 ```
 claudeSpread/
 ├── .claude-plugin/
-│   └── plugin.json              # Plugin manifest
+│   ├── plugin.json              # Plugin manifest
+│   └── marketplace.json         # Marketplace metadata
+├── scripts/                     # Shared scripts
+│   ├── common.py                # Crypto, protocol, message framing
+│   ├── serve.py                 # TCP/WebSocket server
+│   └── receive.py               # TCP/WebSocket client
 ├── skills/
-│   ├── distill-share/
-│   │   ├── SKILL.md             # Skill definition for sharing
-│   │   └── scripts/
-│   │       ├── common.py        # Shared crypto & protocol utilities
-│   │       └── serve.py         # TCP/WebSocket server
-│   └── distill-receive/
-│       ├── SKILL.md             # Skill definition for receiving
-│       └── scripts/
-│           ├── common.py        # Shared crypto & protocol utilities
-│           └── receive.py       # TCP/WebSocket client
+│   ├── distill-share/SKILL.md
+│   ├── distill-receive/SKILL.md
+│   ├── memory-share/
+│   │   ├── SKILL.md
+│   │   └── scripts/bundle.py   # Memory directory → JSON bundle
+│   └── memory-receive/
+│       ├── SKILL.md
+│       └── scripts/install.py  # JSON bundle → memory directory
 ├── RELAY_SERVER_SPEC.md         # Relay server implementation spec
 └── README.md
 ```

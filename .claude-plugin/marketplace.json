@@ -4,14 +4,14 @@
     "name": "NAMYUNWOO"
   },
   "metadata": {
-    "description": "Securely share Claude Code session distillations over LAN or relay"
+    "description": "Securely share Claude Code session distillations and project memory over LAN or relay"
   },
   "plugins": [
     {
       "name": "claude-spread",
       "source": "./",
-      "description": "Securely share Claude Code session distillations over LAN or relay",
-      "version": "1.0.0"
+      "description": "Securely share Claude Code session distillations and project memory over LAN or relay",
+      "version": "1.1.0"
     }
   ]
 }
