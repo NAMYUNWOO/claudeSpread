@@ -584,6 +584,9 @@ function setLang(lang) {
     }
   });
 }
+
+const browserLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
+setLang(browserLang);
 </script>
 
 </body>
