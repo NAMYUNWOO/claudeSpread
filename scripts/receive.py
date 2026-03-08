@@ -239,7 +239,7 @@ async def relay_receive(passphrase: str, relay_url: str, room_id: str) -> str | 
 
     print(f"Connecting to relay server... ({relay_url})", flush=True)
 
-    async with websockets.connect(relay_url) as ws:
+    async with websockets.connect(relay_url, max_size=50 * 1024 * 1024) as ws:
         # Join room
         await common.send_msg_ws(ws, {"type": "JOIN_ROOM", "room_id": room_id})
         response = await common.recv_msg_ws(ws)

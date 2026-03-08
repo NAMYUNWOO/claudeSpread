@@ -247,7 +247,7 @@ async def relay_mode(passphrase, catalog, relay_url):
 
     print(f"Connecting to relay server... ({relay_url})", flush=True)
 
-    async with websockets.connect(relay_url) as ws:
+    async with websockets.connect(relay_url, max_size=50 * 1024 * 1024) as ws:
         # Create room
         await common.send_msg_ws(ws, {"type": "CREATE_ROOM"})
         response = await common.recv_msg_ws(ws)
