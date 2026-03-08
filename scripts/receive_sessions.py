@@ -268,33 +268,42 @@ async def relay_authenticate(ws, passphrase: str) -> bool:
     return True
 
 
-async def relay_list_sessions(passphrase: str, relay_url: str, room_id: str) -> str | None:
+async def relay_connect_and_auth(passphrase: str, relay_url: str, room_id: str):
+    """Connect to relay, join room, authenticate. Returns (ws, None) on success or (None, error_str)."""
     try:
         import websockets
     except ImportError:
-        print("Error: websockets package required. Install with `pip install websockets`.",
-              file=sys.stderr)
-        return None
+        return None, "websockets package required. Install with `pip install websockets`."
 
     print(f"Connecting to relay server... ({relay_url})", flush=True)
 
-    async with websockets.connect(relay_url) as ws:
-        await common.send_msg_ws(ws, {"type": "JOIN_ROOM", "room_id": room_id})
-        response = await common.recv_msg_ws(ws)
+    ws = await websockets.connect(relay_url)
+    await common.send_msg_ws(ws, {"type": "JOIN_ROOM", "room_id": room_id})
+    response = await common.recv_msg_ws(ws)
 
-        if not response or response.get("type") != "ROOM_JOINED":
-            reason = response.get("reason", "") if response else ""
-            if "not_found" in reason:
-                print(f"Error: Room '{room_id}' not found.", file=sys.stderr)
-            else:
-                print(f"Error: Failed to join room: {response}", file=sys.stderr)
-            return None
+    if not response or response.get("type") != "ROOM_JOINED":
+        reason = response.get("reason", "") if response else ""
+        await ws.close()
+        if "not_found" in reason:
+            return None, f"Room '{room_id}' not found."
+        return None, f"Failed to join room: {response}"
 
-        print(f"Joined room {room_id}", flush=True)
+    print(f"Joined room {room_id}", flush=True)
 
-        if not await relay_authenticate(ws, passphrase):
-            return None
+    if not await relay_authenticate(ws, passphrase):
+        await ws.close()
+        return None, "Authentication failed."
 
+    return ws, None
+
+
+async def relay_list_sessions(passphrase: str, relay_url: str, room_id: str) -> str | None:
+    ws, err = await relay_connect_and_auth(passphrase, relay_url, room_id)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
+        return None
+
+    try:
         await common.send_msg_ws(ws, {"type": "LIST_SESSIONS"})
 
         msg = await common.recv_msg_ws(ws)
@@ -309,36 +318,18 @@ async def relay_list_sessions(passphrase: str, relay_url: str, room_id: str) -> 
             return None
 
         return json.dumps(msg)
+    finally:
+        await ws.close()
 
 
 async def relay_select_session(passphrase: str, relay_url: str, room_id: str,
                                session_id: str) -> str | None:
-    try:
-        import websockets
-    except ImportError:
-        print("Error: websockets package required. Install with `pip install websockets`.",
-              file=sys.stderr)
+    ws, err = await relay_connect_and_auth(passphrase, relay_url, room_id)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
         return None
 
-    print(f"Connecting to relay server... ({relay_url})", flush=True)
-
-    async with websockets.connect(relay_url) as ws:
-        await common.send_msg_ws(ws, {"type": "JOIN_ROOM", "room_id": room_id})
-        response = await common.recv_msg_ws(ws)
-
-        if not response or response.get("type") != "ROOM_JOINED":
-            reason = response.get("reason", "") if response else ""
-            if "not_found" in reason:
-                print(f"Error: Room '{room_id}' not found.", file=sys.stderr)
-            else:
-                print(f"Error: Failed to join room: {response}", file=sys.stderr)
-            return None
-
-        print(f"Joined room {room_id}", flush=True)
-
-        if not await relay_authenticate(ws, passphrase):
-            return None
-
+    try:
         await common.send_msg_ws(ws, {"type": "SELECT_SESSION", "sessionId": session_id})
 
         msg = await common.recv_msg_ws(ws)
@@ -364,6 +355,52 @@ async def relay_select_session(passphrase: str, relay_url: str, room_id: str,
 
         await common.send_msg_ws(ws, {"type": "ACK"})
         return plaintext.decode("utf-8")
+    finally:
+        await ws.close()
+
+
+async def relay_list_and_select(passphrase: str, relay_url: str, room_id: str,
+                                 session_id: str) -> str | None:
+    """List sessions then select one, all in a single relay connection."""
+    ws, err = await relay_connect_and_auth(passphrase, relay_url, room_id)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
+        return None
+
+    try:
+        # First list to validate session exists
+        await common.send_msg_ws(ws, {"type": "LIST_SESSIONS"})
+
+        msg = await common.recv_msg_ws(ws)
+        if not msg or msg.get("type") != "SESSION_LIST":
+            print(f"Error: unexpected response: {msg}", file=sys.stderr)
+            return None
+
+        # Now select in the same connection
+        await common.send_msg_ws(ws, {"type": "SELECT_SESSION", "sessionId": session_id})
+
+        msg = await common.recv_msg_ws(ws)
+        if not msg:
+            print("Error: no response", file=sys.stderr)
+            return None
+        if msg.get("type") == "ERROR":
+            print(f"Error: {msg.get('reason', 'unknown')}", file=sys.stderr)
+            return None
+        if msg.get("type") != "PAYLOAD":
+            print(f"Error: unexpected message type: {msg.get('type')}", file=sys.stderr)
+            return None
+
+        payload_salt = bytes.fromhex(msg["salt"])
+        enc_nonce = bytes.fromhex(msg["nonce"])
+        ciphertext = bytes.fromhex(msg["ciphertext"])
+
+        payload_key = common.derive_key(passphrase, payload_salt)
+        plaintext = common.decrypt(payload_key, enc_nonce, ciphertext)
+
+        await common.send_msg_ws(ws, {"type": "ACK"})
+        return plaintext.decode("utf-8")
+    finally:
+        await ws.close()
 
 
 def main():
@@ -415,7 +452,7 @@ def main():
             sys.exit(1)
 
         if select_id:
-            result = asyncio.run(relay_select_session(passphrase, relay_url, room_id, select_id))
+            result = asyncio.run(relay_list_and_select(passphrase, relay_url, room_id, select_id))
         else:
             result = asyncio.run(relay_list_sessions(passphrase, relay_url, room_id))
     else:

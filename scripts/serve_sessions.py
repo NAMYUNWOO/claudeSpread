@@ -245,43 +245,66 @@ async def relay_mode(passphrase, catalog, relay_url):
 
     total_served = 0
 
-    print(f"Connecting to relay server... ({relay_url})", flush=True)
+    room_id = None
 
-    async with websockets.connect(relay_url) as ws:
-        await common.send_msg_ws(ws, {"type": "CREATE_ROOM"})
-        response = await common.recv_msg_ws(ws)
+    while True:
+        print(f"Connecting to relay server... ({relay_url})", flush=True)
 
-        if not response or response.get("type") != "ROOM_CREATED":
-            print(f"Error: failed to create room: {response}", file=sys.stderr)
-            sys.exit(1)
+        try:
+            async with websockets.connect(relay_url) as ws:
+                if room_id is None:
+                    await common.send_msg_ws(ws, {"type": "CREATE_ROOM"})
+                else:
+                    await common.send_msg_ws(ws, {"type": "CREATE_ROOM", "room_id": room_id})
+                response = await common.recv_msg_ws(ws)
 
-        room_id = response["room_id"]
-        print(f"Room created: {room_id}", flush=True)
-        print(f"Tell the receiver to run: /sessions-receive --relay --room {room_id} <passphrase>",
-              flush=True)
-        print(f"Sharing {len(session_list)} session(s) until Ctrl+C...\n", flush=True)
+                if not response or response.get("type") != "ROOM_CREATED":
+                    print(f"Error: failed to create room: {response}", file=sys.stderr)
+                    sys.exit(1)
 
-        while True:
-            control = await common.recv_msg_ws(ws)
-            if not control:
-                break
+                room_id = response["room_id"]
+                if total_served == 0:
+                    print(f"Room created: {room_id}", flush=True)
+                    print(f"Tell the receiver to run: /sessions-receive --relay --room {room_id} <passphrase>",
+                          flush=True)
+                    print(f"Sharing {len(session_list)} session(s) until Ctrl+C...\n", flush=True)
+                else:
+                    print(f"  [RELAY] Reconnected to room {room_id}, waiting for next receiver...", flush=True)
 
-            msg_type = control.get("type", "")
+                while True:
+                    try:
+                        control = await common.recv_msg_ws(ws)
+                    except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedOK):
+                        print("  [RELAY] Connection closed, reconnecting...", flush=True)
+                        break
+                    if not control:
+                        break
 
-            if msg_type == "PEER_JOINED":
-                try:
-                    ok = await handle_peer_ws(ws, passphrase, catalog, session_list,
-                                              payload_salt, payload_key)
-                    if ok:
-                        total_served += 1
-                        print(f"  [OK] Request served ({total_served} total)", flush=True)
-                except Exception as e:
-                    print(f"  [ERROR] Error handling peer: {e}", file=sys.stderr, flush=True)
+                    msg_type = control.get("type", "")
 
-            elif msg_type == "PEER_DISCONNECTED":
-                continue
-            else:
-                print(f"  [RELAY] {control}", flush=True)
+                    if msg_type == "PEER_JOINED":
+                        try:
+                            ok = await handle_peer_ws(ws, passphrase, catalog, session_list,
+                                                      payload_salt, payload_key)
+                            if ok:
+                                total_served += 1
+                                print(f"  [OK] Request served ({total_served} total)", flush=True)
+                        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedOK):
+                            total_served += 1
+                            print(f"  [OK] Request served, peer disconnected ({total_served} total)", flush=True)
+                            break
+                        except Exception as e:
+                            print(f"  [ERROR] Error handling peer: {e}", file=sys.stderr, flush=True)
+
+                    elif msg_type == "PEER_DISCONNECTED":
+                        continue
+                    else:
+                        print(f"  [RELAY] {control}", flush=True)
+
+        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedOK):
+            print("  [RELAY] Connection lost, reconnecting...", flush=True)
+            await asyncio.sleep(1)
+            continue
 
 
 async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, payload_key):
@@ -310,42 +333,45 @@ async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, pa
         print("  [AUTH FAILED] Authentication failed", flush=True)
         return False
 
-    # 4. Handle session request
-    msg = await common.recv_msg_ws(ws)
-    if not msg:
-        return False
-
-    msg_type = msg.get("type", "")
-
-    if msg_type == "LIST_SESSIONS":
-        await common.send_msg_ws(ws, {"type": "SESSION_LIST", "sessions": session_list})
-        return True
-
-    elif msg_type == "SELECT_SESSION":
-        session_id = msg.get("sessionId", "")
-        full_path = find_session_path(catalog, session_id)
-        if not full_path or not os.path.exists(full_path):
-            await common.send_msg_ws(ws, {"type": "ERROR", "reason": "session_not_found"})
-            return False
-
-        with open(full_path, "r", encoding="utf-8") as f:
-            jsonl_content = f.read()
-
-        enc_nonce, ciphertext = common.encrypt(payload_key, jsonl_content.encode("utf-8"))
-        await common.send_msg_ws(ws, {
-            "type": "PAYLOAD",
-            "sessionId": session_id,
-            "salt": payload_salt.hex(),
-            "nonce": enc_nonce.hex(),
-            "ciphertext": ciphertext.hex(),
-        })
-
+    # 4. Handle session requests (loop to support multiple requests per connection)
+    while True:
         msg = await common.recv_msg_ws(ws)
-        return True
+        if not msg:
+            return True
 
-    else:
-        await common.send_msg_ws(ws, {"type": "ERROR", "reason": "unknown_request"})
-        return False
+        msg_type = msg.get("type", "")
+
+        if msg_type == "LIST_SESSIONS":
+            await common.send_msg_ws(ws, {"type": "SESSION_LIST", "sessions": session_list})
+
+        elif msg_type == "SELECT_SESSION":
+            session_id = msg.get("sessionId", "")
+            full_path = find_session_path(catalog, session_id)
+            if not full_path or not os.path.exists(full_path):
+                await common.send_msg_ws(ws, {"type": "ERROR", "reason": "session_not_found"})
+                continue
+
+            with open(full_path, "r", encoding="utf-8") as f:
+                jsonl_content = f.read()
+
+            enc_nonce, ciphertext = common.encrypt(payload_key, jsonl_content.encode("utf-8"))
+            await common.send_msg_ws(ws, {
+                "type": "PAYLOAD",
+                "sessionId": session_id,
+                "salt": payload_salt.hex(),
+                "nonce": enc_nonce.hex(),
+                "ciphertext": ciphertext.hex(),
+            })
+
+            msg = await common.recv_msg_ws(ws)
+            return True
+
+        elif msg_type == "DONE":
+            return True
+
+        else:
+            await common.send_msg_ws(ws, {"type": "ERROR", "reason": "unknown_request"})
+            return False
 
 
 def main():
