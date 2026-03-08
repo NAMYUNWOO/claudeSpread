@@ -245,72 +245,54 @@ async def relay_mode(passphrase, catalog, relay_url):
 
     total_served = 0
 
-    room_id = None
+    print(f"Connecting to relay server... ({relay_url})", flush=True)
 
-    while True:
-        print(f"Connecting to relay server... ({relay_url})", flush=True)
+    async with websockets.connect(relay_url) as ws:
+        # Create room
+        await common.send_msg_ws(ws, {"type": "CREATE_ROOM"})
+        response = await common.recv_msg_ws(ws)
 
-        try:
-            async with websockets.connect(relay_url) as ws:
-                if room_id is None:
-                    await common.send_msg_ws(ws, {"type": "CREATE_ROOM"})
-                else:
-                    await common.send_msg_ws(ws, {"type": "CREATE_ROOM", "room_id": room_id})
-                response = await common.recv_msg_ws(ws)
+        if not response or response.get("type") != "ROOM_CREATED":
+            print(f"Error: failed to create room: {response}", file=sys.stderr)
+            sys.exit(1)
 
-                if not response or response.get("type") != "ROOM_CREATED":
-                    print(f"Error: failed to create room: {response}", file=sys.stderr)
-                    sys.exit(1)
+        room_id = response["room_id"]
+        print(f"Room created: {room_id}", flush=True)
+        print(f"Tell the receiver to run: /sessions-receive --relay --room {room_id} <passphrase>",
+              flush=True)
+        print(f"Sharing {len(session_list)} session(s) until Ctrl+C...\n", flush=True)
 
-                room_id = response["room_id"]
-                if total_served == 0:
-                    print(f"Room created: {room_id}", flush=True)
-                    print(f"Tell the receiver to run: /sessions-receive --relay --room {room_id} <passphrase>",
-                          flush=True)
-                    print(f"Sharing {len(session_list)} session(s) until Ctrl+C...\n", flush=True)
-                else:
-                    print(f"  [RELAY] Reconnected to room {room_id}, waiting for next receiver...", flush=True)
+        # Loop: wait for peers (same pattern as distill serve.py)
+        while True:
+            control = await common.recv_msg_ws(ws)
+            if not control:
+                break
 
-                while True:
-                    try:
-                        control = await common.recv_msg_ws(ws)
-                    except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedOK):
-                        print("  [RELAY] Connection closed, reconnecting...", flush=True)
-                        break
-                    if not control:
-                        break
+            msg_type = control.get("type", "")
 
-                    msg_type = control.get("type", "")
+            if msg_type == "PEER_JOINED":
+                try:
+                    ok = await handle_peer_ws(ws, passphrase, catalog, session_list,
+                                              payload_salt, payload_key)
+                    if ok:
+                        total_served += 1
+                        print(f"  [OK] Request served ({total_served} total)", flush=True)
+                except Exception as e:
+                    print(f"  [ERROR] Error handling peer: {e}", file=sys.stderr, flush=True)
 
-                    if msg_type == "PEER_JOINED":
-                        try:
-                            ok = await handle_peer_ws(ws, passphrase, catalog, session_list,
-                                                      payload_salt, payload_key)
-                            if ok:
-                                total_served += 1
-                                print(f"  [OK] Request served ({total_served} total)", flush=True)
-                        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedOK):
-                            total_served += 1
-                            print(f"  [OK] Request served, peer disconnected ({total_served} total)", flush=True)
-                            break
-                        except Exception as e:
-                            print(f"  [ERROR] Error handling peer: {e}", file=sys.stderr, flush=True)
-
-                    elif msg_type == "PEER_DISCONNECTED":
-                        continue
-                    else:
-                        print(f"  [RELAY] {control}", flush=True)
-
-        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedOK):
-            print("  [RELAY] Connection lost, reconnecting...", flush=True)
-            await asyncio.sleep(1)
-            continue
+            elif msg_type == "PEER_DISCONNECTED":
+                # Peer left before or after handshake, continue waiting
+                continue
+            else:
+                print(f"  [RELAY] {control}", flush=True)
 
 
 async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, payload_key):
     # 1. HELLO
     msg = await common.recv_msg_ws(ws)
-    if not msg or msg.get("type") != "HELLO":
+    if not msg or msg.get("type") in ("PEER_DISCONNECTED",):
+        return False
+    if msg.get("type") != "HELLO":
         return False
 
     # 2. CHALLENGE
@@ -324,7 +306,9 @@ async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, pa
 
     # 3. AUTH
     msg = await common.recv_msg_ws(ws)
-    if not msg or msg.get("type") != "AUTH":
+    if not msg or msg.get("type") in ("PEER_DISCONNECTED",):
+        return False
+    if msg.get("type") != "AUTH":
         return False
 
     auth_key = common.derive_key(passphrase, auth_salt)
@@ -340,6 +324,10 @@ async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, pa
             return True
 
         msg_type = msg.get("type", "")
+
+        # Handle relay control messages gracefully
+        if msg_type in ("PEER_DISCONNECTED", "PEER_JOINED"):
+            return True
 
         if msg_type == "LIST_SESSIONS":
             await common.send_msg_ws(ws, {"type": "SESSION_LIST", "sessions": session_list})
@@ -363,6 +351,7 @@ async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, pa
                 "ciphertext": ciphertext.hex(),
             })
 
+            # Wait for ACK, but handle peer disconnect gracefully
             msg = await common.recv_msg_ws(ws)
             return True
 
