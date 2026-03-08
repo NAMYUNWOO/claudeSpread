@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Spread — Session Share</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0f;
+    color: #e4e4e7;
+    font-family: 'Inter', -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(217,119,87,.15) 0%, transparent 70%);
+    top: -100px; left: 50%; transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    background: rgba(217,119,87,.1);
+    border: 1px solid rgba(217,119,87,.25);
+    border-radius: 999px;
+    padding: .4rem 1rem;
+    font-size: .8rem;
+    color: #d97757;
+    font-weight: 600;
+    letter-spacing: .04em;
+    margin-bottom: 1.5rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.4rem, 6vw, 4.2rem);
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #fff 30%, #d97757);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .hero h1 span {
+    display: block;
+    font-size: .55em;
+    font-weight: 500;
+    background: linear-gradient(135deg, #a1a1aa, #71717a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-top: .3rem;
+  }
+
+  .hero p.subtitle {
+    max-width: 520px;
+    font-size: 1.1rem;
+    color: #a1a1aa;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+  }
+
+  .cta-row {
+    display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .75rem 1.5rem;
+    border-radius: 10px;
+    font-size: .95rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform .15s, box-shadow .2s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary {
+    background: linear-gradient(135deg, #d97757, #c2623f);
+    color: #fff;
+    box-shadow: 0 4px 24px rgba(217,119,87,.3);
+  }
+  .btn-ghost {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    color: #e4e4e7;
+  }
+
+  /* ── Flow Section ── */
+  .flow-section {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 4rem 2rem 6rem;
+  }
+
+  .flow-section h2 {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: .6rem;
+  }
+
+  .flow-section .section-sub {
+    text-align: center;
+    color: #71717a;
+    font-size: .95rem;
+    margin-bottom: 3rem;
+  }
+
+  /* ── 2-column flow ── */
+  .flow-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    position: relative;
+  }
+
+  @media (max-width: 700px) {
+    .flow-grid { grid-template-columns: 1fr; }
+  }
+
+  .flow-card {
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 16px;
+    padding: 1.8rem;
+    position: relative;
+  }
+
+  .flow-card .label {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    padding: .3rem .7rem;
+    border-radius: 6px;
+  }
+
+  .sender .label {
+    color: #d97757;
+    background: rgba(217,119,87,.12);
+  }
+
+  .receiver .label {
+    color: #60a5fa;
+    background: rgba(96,165,250,.12);
+  }
+
+  .flow-card h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: .8rem;
+  }
+
+  /* terminal mock */
+  .terminal {
+    background: #111118;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .72rem;
+    line-height: 1.7;
+    margin-top: .8rem;
+  }
+
+  .terminal-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: .5rem .8rem;
+    background: rgba(255,255,255,.04);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .terminal-bar .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-r { background: #f87171; }
+  .dot-y { background: #fbbf24; }
+  .dot-g { background: #34d399; }
+
+  .terminal-body {
+    padding: .8rem 1rem;
+    overflow-x: auto;
+    white-space: pre;
+    color: #a1a1aa;
+  }
+
+  .terminal-body .prompt { color: #d97757; }
+  .terminal-body .cmd { color: #e4e4e7; }
+  .terminal-body .info { color: #60a5fa; }
+  .terminal-body .success { color: #34d399; }
+  .terminal-body .dim { color: #52525b; }
+  .terminal-body .highlight { color: #fbbf24; }
+
+  /* ── Arrow between cards ── */
+  .flow-arrow {
+    display: none;
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+  }
+
+  @media (min-width: 701px) {
+    .flow-arrow { display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+  }
+
+  .flow-arrow svg { filter: drop-shadow(0 0 8px rgba(217,119,87,.4)); }
+
+  .arrow-label {
+    font-size: .65rem;
+    color: #d97757;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: #0a0a0f;
+    padding: .2rem .5rem;
+    border-radius: 4px;
+  }
+
+  /* ── Steps ── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: 1rem;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    font-size: .82rem;
+    color: #a1a1aa;
+    line-height: 1.5;
+  }
+
+  .step-num {
+    flex-shrink: 0;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .65rem;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+
+  .sender .step-num {
+    background: rgba(217,119,87,.15);
+    color: #d97757;
+  }
+
+  .receiver .step-num {
+    background: rgba(96,165,250,.15);
+    color: #60a5fa;
+  }
+
+  /* ── Features strip ── */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 2rem 5rem;
+  }
+
+  @media (max-width: 700px) {
+    .features { grid-template-columns: 1fr; }
+  }
+
+  .feat {
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 14px;
+    padding: 1.5rem;
+  }
+
+  .feat-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    margin-bottom: .8rem;
+  }
+
+  .feat h4 {
+    font-size: .95rem;
+    font-weight: 700;
+    margin-bottom: .4rem;
+  }
+
+  .feat p {
+    font-size: .8rem;
+    color: #71717a;
+    line-height: 1.5;
+  }
+
+  .feat-icon.enc { background: rgba(52,211,153,.1); color: #34d399; }
+  .feat-icon.net { background: rgba(96,165,250,.1); color: #60a5fa; }
+  .feat-icon.fast { background: rgba(251,191,36,.1); color: #fbbf24; }
+
+  /* ── Install ── */
+  .install {
+    text-align: center;
+    padding: 3rem 2rem 5rem;
+  }
+
+  .install h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+  }
+
+  .install-cmd {
+    display: inline-block;
+    min-width: 480px;
+    text-align: center;
+    background: #111118;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    padding: .8rem 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .85rem;
+    color: #d97757;
+    margin-bottom: 1rem;
+    cursor: pointer;
+    transition: border-color .2s;
+  }
+
+  .install-cmd:hover {
+    border-color: rgba(217,119,87,.4);
+  }
+
+  .install .note {
+    font-size: .8rem;
+    color: #52525b;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 2rem;
+    font-size: .75rem;
+    color: #3f3f46;
+    border-top: 1px solid rgba(255,255,255,.04);
+  }
+
+  footer a { color: #71717a; text-decoration: none; }
+  footer a:hover { color: #d97757; }
+
+  /* ── Lang toggle ── */
+  .lang-toggle {
+    position: fixed;
+    top: 1.2rem;
+    right: 1.5rem;
+    z-index: 100;
+    display: flex;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .lang-toggle button {
+    background: none;
+    border: none;
+    color: #71717a;
+    font-size: .8rem;
+    font-weight: 600;
+    padding: .4rem .8rem;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .lang-toggle button.active {
+    background: rgba(217,119,87,.15);
+    color: #d97757;
+  }
+</style>
+</head>
+<body>
+
+<div class="lang-toggle">
+  <button id="btn-ko" class="active" onclick="setLang('ko')">KO</button>
+  <button id="btn-en" onclick="setLang('en')">EN</button>
+</div>
+
+<!-- ════ Hero ════ -->
+<section class="hero">
+  <div class="badge">CLAUDE SPREAD v1.3</div>
+  <h1>
+    Session Share
+    <span data-i18n="hero_sub">Claude Code 세션을 통째로 공유하세요</span>
+  </h1>
+  <p class="subtitle" data-i18n="hero_desc">
+    커맨드 한 줄이면 내 개발 세션이 동료의 머신으로.
+    AES-256-GCM 암호화, LAN 자동 탐색, 릴레이 서버 지원.
+  </p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://github.com/NAMYUNWOO/claudeSpread" target="_blank">GitHub Repo →</a>
+    <a class="btn btn-ghost" href="https://github.com/NAMYUNWOO/claudeSpread#install" target="_blank" data-i18n="btn_install">설치하기</a>
+  </div>
+</section>
+
+<!-- ════ Flow ════ -->
+<section class="flow-section">
+  <h2 data-i18n="flow_title">어떻게 동작하나요?</h2>
+  <p class="section-sub" data-i18n="flow_sub">보내는 사람 → 받는 사람, 단 두 단계</p>
+
+  <div class="flow-grid">
+    <!-- Sender -->
+    <div class="flow-card sender">
+      <div class="label">📤 SENDER</div>
+      <h3>sessions-share</h3>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><span data-i18n="s_step1">세션 목록 자동 스캔</span></div>
+        <div class="step"><div class="step-num">2</div><span data-i18n="s_step2">공유할 세션 선택</span></div>
+        <div class="step"><div class="step-num">3</div><span data-i18n="s_step3">Room 코드 + 패스프레이즈 생성</span></div>
+      </div>
+      <div class="terminal">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+        <div class="terminal-body"><span class="prompt">❯</span> <span class="cmd">/claude-spread:sessions-share --relay</span>
+
+<span class="dim">Scanning 28 session file(s)...</span>
+<span class="dim">┌────┬──────────────────────────────┬──────────┐
+│  # │ Summary                      │ Messages │
+├────┼──────────────────────────────┼──────────┤
+│ 1  │ Fix auth token refresh bug   │ 42       │
+│ 2  │ Add Stripe webhook handler   │ 67       │
+│ <span class="highlight">3</span>  │ <span class="highlight">Refactor API rate limiter</span>    │ 85       │
+│ 4  │ Setup CI/CD pipeline         │ 31       │
+└────┴──────────────────────────────┴──────────┘
+Select session [1-4]:</span> <span class="highlight">3</span>
+
+<span class="success">✓ Room created:</span> <span class="highlight">ultv1q</span>
+<span class="info">Tell receiver to run:</span>
+<span class="cmd">/sessions-receive --relay --room ultv1q MzH0Kk9c</span></div>
+      </div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="flow-arrow">
+      <div class="arrow-label">E2E Encrypted</div>
+      <svg width="48" height="24" viewBox="0 0 48 24" fill="none">
+        <path d="M4 12h36m0 0l-8-7m8 7l-8 7" stroke="#d97757" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- Receiver -->
+    <div class="flow-card receiver">
+      <div class="label">📥 RECEIVER</div>
+      <h3>sessions-receive</h3>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><span data-i18n="r_step1">Room 코드로 접속</span></div>
+        <div class="step"><div class="step-num">2</div><span data-i18n="r_step2">세션 확인 후 다운로드</span></div>
+        <div class="step"><div class="step-num">3</div><span data-i18n="r_step3_html"><code>/resume</code>으로 바로 이어서 작업</span></div>
+      </div>
+      <div class="terminal">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+        <div class="terminal-body"><span class="prompt">❯</span> <span class="cmd">/claude-spread:sessions-receive \
+  --relay --room ultv1q MzH0Kk9c</span>
+
+<span class="info">Joined room ultv1q</span>
+<span class="dim">Found 1 session available</span>
+<span class="dim">→ Refactor API rate limiter · 85 messages · 28 min ago</span>
+
+<span class="success">✓ Session installed successfully</span>
+<span class="success">✓ Ready to /resume</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ Features ════ -->
+<section class="features">
+  <div class="feat">
+    <div class="feat-icon enc">🔐</div>
+    <h4 data-i18n="feat1_title">E2E 암호화</h4>
+    <p data-i18n="feat1_desc">AES-256-GCM + PBKDF2 600K iterations. 릴레이 서버도 평문을 볼 수 없습니다.</p>
+  </div>
+  <div class="feat">
+    <div class="feat-icon net">🌐</div>
+    <h4 data-i18n="feat2_title">LAN & Relay</h4>
+    <p data-i18n="feat2_desc">같은 네트워크면 mDNS로 자동 탐색. 다른 네트워크면 릴레이 서버로 연결.</p>
+  </div>
+  <div class="feat">
+    <div class="feat-icon fast">⚡</div>
+    <h4 data-i18n="feat3_title">즉시 /resume</h4>
+    <p data-i18n="feat3_desc">받은 세션은 로컬에 설치되어 /resume으로 바로 이어서 작업할 수 있습니다.</p>
+  </div>
+</section>
+
+<!-- ════ Install ════ -->
+<section class="install">
+  <h2 data-i18n="install_title">30초면 설치 끝</h2>
+  <div class="install-cmd" onclick="navigator.clipboard.writeText('/plugin marketplace add NAMYUNWOO/claudeSpread')" title="클릭하여 복사">
+    /plugin marketplace add NAMYUNWOO/claudeSpread
+  </div>
+  <br>
+  <div class="install-cmd" onclick="navigator.clipboard.writeText('/plugin install claude-spread@ai-spread')" title="클릭하여 복사">
+    /plugin install claude-spread@ai-spread
+  </div>
+  <div class="note" data-i18n="install_note">Claude Code 안에서 위 명령어를 순서대로 실행하세요</div>
+</section>
+
+<footer>
+  <a href="https://github.com/NAMYUNWOO/claudeSpread" target="_blank">Claude Spread</a> &mdash; MIT License
+</footer>
+
+<script>
+const i18n = {
+  ko: {
+    hero_sub: "Claude Code 세션을 통째로 공유하세요",
+    hero_desc: "커맨드 한 줄이면 내 개발 세션이 동료의 머신으로. AES-256-GCM 암호화, LAN 자동 탐색, 릴레이 서버 지원.",
+    btn_install: "설치하기",
+    flow_title: "어떻게 동작하나요?",
+    flow_sub: "보내는 사람 → 받는 사람, 단 두 단계",
+    s_step1: "세션 목록 자동 스캔",
+    s_step2: "공유할 세션 선택",
+    s_step3: "Room 코드 + 패스프레이즈 생성",
+    r_step1: "Room 코드로 접속",
+    r_step2: "세션 확인 후 다운로드",
+    r_step3_html: "<code>/resume</code>으로 바로 이어서 작업",
+    feat1_title: "E2E 암호화",
+    feat1_desc: "AES-256-GCM + PBKDF2 600K iterations. 릴레이 서버도 평문을 볼 수 없습니다.",
+    feat2_title: "LAN & 릴레이",
+    feat2_desc: "같은 네트워크면 mDNS로 자동 탐색. 다른 네트워크면 릴레이 서버로 연결.",
+    feat3_title: "즉시 /resume",
+    feat3_desc: "받은 세션은 로컬에 설치되어 /resume으로 바로 이어서 작업할 수 있습니다.",
+    install_title: "30초면 설치 끝",
+    install_note: "Claude Code 안에서 위 명령어를 순서대로 실행하세요",
+  },
+  en: {
+    hero_sub: "Share your entire Claude Code session",
+    hero_desc: "One command sends your dev session to a teammate's machine. AES-256-GCM encryption, LAN auto-discovery, relay server support.",
+    btn_install: "Install",
+    flow_title: "How does it work?",
+    flow_sub: "Sender → Receiver, just two steps",
+    s_step1: "Auto-scan session list",
+    s_step2: "Pick a session to share",
+    s_step3: "Generate room code + passphrase",
+    r_step1: "Join with room code",
+    r_step2: "Review & download session",
+    r_step3_html: "Continue right away with <code>/resume</code>",
+    feat1_title: "E2E Encryption",
+    feat1_desc: "AES-256-GCM + PBKDF2 600K iterations. Even the relay server cannot see plaintext.",
+    feat2_title: "LAN & Relay",
+    feat2_desc: "Same network? Auto-discovered via mDNS. Different network? Connected through relay.",
+    feat3_title: "Instant /resume",
+    feat3_desc: "Received sessions are installed locally — resume right where your teammate left off.",
+    install_title: "Install in 30 seconds",
+    install_note: "Run the commands above inside Claude Code",
+  }
+};
+
+function setLang(lang) {
+  document.documentElement.lang = lang;
+  document.getElementById('btn-ko').classList.toggle('active', lang === 'ko');
+  document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key.endsWith('_html')) {
+      el.innerHTML = i18n[lang][key];
+    } else {
+      el.textContent = i18n[lang][key];
+    }
+  });
+}
+</script>
+
+</body>
+</html>
