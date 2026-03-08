@@ -58,12 +58,12 @@ def send_msg(sock, obj: dict) -> None:
     data = json.dumps(obj).encode("utf-8")
     sock.sendall(struct.pack("!I", len(data)) + data)
 
-def recv_msg(sock) -> dict | None:
+def recv_msg(sock, max_size: int = 10 * 1024 * 1024) -> dict | None:
     raw_len = _recv_exact(sock, 4)
     if raw_len is None:
         return None
     (length,) = struct.unpack("!I", raw_len)
-    if length > 10 * 1024 * 1024:  # 10 MB sanity limit
+    if length > max_size:
         return None
     raw_body = _recv_exact(sock, length)
     if raw_body is None:
