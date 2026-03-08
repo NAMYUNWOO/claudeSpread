@@ -17,52 +17,33 @@ You are sharing your Claude Code sessions so another user can browse and resume 
 
 **Warning**: Session files contain full conversation history. Only share with trusted recipients.
 
-## Step 1: Read the sessions index
+## Step 1: Build the sessions catalog
 
-Read the sessions index file to find available sessions:
+Scan all session `.jsonl` files and build a catalog:
 
 ```bash
-cat ~/.claude/projects/$(pwd | sed 's|/|-|g')/sessions-index.json
+mkdir -p ${CLAUDE_PLUGIN_ROOT}/.tmp
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_sessions_catalog.py ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-sessions-catalog.json
 ```
 
-If the file doesn't exist, tell the user there are no sessions to share and stop.
+If no sessions are found, tell the user there are no sessions to share and stop.
 
 ## Step 2: Show sessions to the user
 
-Parse the sessions index and display the sessions list to the user, sorted by `modified` (newest first). For each session show:
+Read the generated catalog file:
+
+```bash
+cat ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-sessions-catalog.json
+```
+
+Display the sessions list to the user, sorted by `modified` (newest first). For each session show:
 - Summary (or first 40 chars of firstPrompt if no summary)
 - Git branch, message count, and modified date
 - Whether it's a sidechain
 
 Ask the user to confirm which sessions to share (all, or a subset by number).
 
-## Step 3: Build the catalog
-
-Create a catalog JSON file at `${CLAUDE_PLUGIN_ROOT}/.tmp/claude-sessions-catalog.json` with the selected sessions:
-
-```json
-{
-  "sessions": [
-    {
-      "sessionId": "...",
-      "fullPath": "/absolute/path/to/session.jsonl",
-      "summary": "...",
-      "firstPrompt": "...",
-      "messageCount": 42,
-      "created": "...",
-      "modified": "...",
-      "gitBranch": "main",
-      "projectPath": "/path/to/project",
-      "isSidechain": false
-    }
-  ]
-}
-```
-
-Make sure to create the `.tmp` directory first:
-```bash
-mkdir -p ${CLAUDE_PLUGIN_ROOT}/.tmp
-```
+If the user picks a subset, update the catalog file to include only the selected sessions.
 
 ## Step 4: Start the sharing server
 
