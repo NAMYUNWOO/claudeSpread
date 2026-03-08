@@ -12,6 +12,8 @@ Claude Spread adds skills to Claude Code for sharing session context and project
 - **`/claude-spread:distill-receive`** — Discovers and receives a distillation from a sender, decrypts it, and presents it so you can continue where the previous session left off.
 - **`/claude-spread:memory-share`** — Shares your project's auto memory (`~/.claude/projects/<project>/memory/`) over the network. Supports distilled (default) and raw (`--raw`) modes.
 - **`/claude-spread:memory-receive`** — Receives shared project memory and installs it into your local auto memory directory.
+- **`/claude-spread:sessions-share`** — Shares your Claude Code `/resume` sessions so another user can browse and pick one to continue working on.
+- **`/claude-spread:sessions-receive`** — Browses available sessions from a sender, lets you pick one, installs it locally, and you can `/resume` it immediately.
 
 All data is encrypted end-to-end with AES-256-GCM. The passphrase never leaves your machines.
 
@@ -74,6 +76,20 @@ Share your project's accumulated auto memory (patterns, conventions, debugging i
 
 Relay mode works the same way — add `--relay` to share across networks.
 
+### Session Sharing
+
+Share your Claude Code `/resume` sessions — the receiver can browse your session list and pick one to continue working on in their own environment.
+
+```bash
+# Share sessions
+/claude-spread:sessions-share mypassphrase
+
+# Receive sessions (browse & pick)
+/claude-spread:sessions-receive mypassphrase
+```
+
+Relay mode works the same way — add `--relay` to share across networks.
+
 ## Installation
 
 ### From GitHub (recommended)
@@ -118,17 +134,23 @@ claudeSpread/
 │   └── marketplace.json         # Marketplace metadata
 ├── scripts/                     # Shared scripts
 │   ├── common.py                # Crypto, protocol, message framing
-│   ├── serve.py                 # TCP/WebSocket server
-│   └── receive.py               # TCP/WebSocket client
+│   ├── serve.py                 # TCP/WebSocket server (distill)
+│   ├── receive.py               # TCP/WebSocket client (distill)
+│   ├── serve_sessions.py        # Session sharing server (2-phase protocol)
+│   └── receive_sessions.py      # Session sharing client (list/select)
 ├── skills/
 │   ├── distill-share/SKILL.md
 │   ├── distill-receive/SKILL.md
 │   ├── memory-share/
 │   │   ├── SKILL.md
 │   │   └── scripts/bundle.py   # Memory directory → JSON bundle
-│   └── memory-receive/
+│   ├── memory-receive/
+│   │   ├── SKILL.md
+│   │   └── scripts/install.py  # JSON bundle → memory directory
+│   ├── sessions-share/SKILL.md
+│   └── sessions-receive/
 │       ├── SKILL.md
-│       └── scripts/install.py  # JSON bundle → memory directory
+│       └── scripts/install_session.py  # .jsonl → local sessions
 ├── RELAY_SERVER_SPEC.md         # Relay server implementation spec
 └── README.md
 ```
