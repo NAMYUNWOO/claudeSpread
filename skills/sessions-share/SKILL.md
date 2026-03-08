@@ -9,6 +9,9 @@ arguments:
   - name: --relay
     description: Use WebSocket relay server for remote sharing (optional)
     required: false
+  - name: --keep-open
+    description: "Keep server open for N minutes (optional). Without this, server stops after first session download."
+    required: false
 ---
 
 # Sessions Share
@@ -56,13 +59,22 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve_sessions.py "{{passphrase}}" ${CLAUD
 This will:
 1. Encrypt session data with AES-256-GCM using the passphrase
 2. Register an mDNS service on the local network (`_claude-sessions._tcp.`)
-3. Wait for receivers to connect — serves session list and individual sessions on demand
-4. The server keeps running until Ctrl+C
+3. Wait for a receiver to connect, serve the session, then **automatically shut down**
 
 Tell the user:
 - The service name and port shown in the output
 - Instruct the receiver to run: `/sessions-receive {{passphrase}}`
-- The server stays open for multiple receivers until Ctrl+C
+- The server will automatically stop after the first session download
+
+### Sharing with multiple receivers (`--keep-open`)
+
+If the user wants to share with multiple people, use `--keep-open <minutes>`:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/serve_sessions.py --keep-open 10 "{{passphrase}}" ${CLAUDE_PLUGIN_ROOT}/.tmp/claude-sessions-catalog.json
+```
+
+This keeps the server open for the specified number of minutes, allowing multiple receivers to connect. The server shuts down automatically when time expires.
 
 ## Relay Mode (Remote Sharing)
 
@@ -80,4 +92,6 @@ This will:
 Tell the user:
 - The room code shown in the output
 - Instruct the receiver to run: `/sessions-receive --relay --room <room_code> {{passphrase}}`
+- The server will automatically stop after the first session download
+- For sharing with multiple receivers, add `--keep-open <minutes>`
 - Requires `pip install websockets` if not already installed

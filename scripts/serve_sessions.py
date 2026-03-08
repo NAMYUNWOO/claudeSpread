@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import platform
 import shutil
 import uuid
@@ -120,7 +121,7 @@ def handle_session_request(send_fn, recv_fn, passphrase, catalog, session_list,
 
         # Wait for ACK
         recv_fn()
-        return True
+        return "selected"
 
     else:
         send_fn({"type": "ERROR", "reason": "unknown_request"})
@@ -129,7 +130,7 @@ def handle_session_request(send_fn, recv_fn, passphrase, catalog, session_list,
 
 # --------------- LAN Mode ---------------
 
-def lan_mode(passphrase, catalog):
+def lan_mode(passphrase, catalog, keep_open_minutes=None):
     session_list = build_session_list(catalog)
     payload_salt = os.urandom(common.SALT_LEN)
     payload_key = common.derive_key(passphrase, payload_salt)
@@ -146,8 +147,11 @@ def lan_mode(passphrase, catalog):
 
     total_served = 0
     total_lock = threading.Lock()
+    should_stop = threading.Event()
     failure_counts: dict[str, int] = {}
     failure_lock = threading.Lock()
+
+    deadline = time.time() + keep_open_minutes * 60 if keep_open_minutes else None
 
     def handle_client(conn: socket.socket, addr):
         nonlocal total_served
@@ -194,33 +198,57 @@ def lan_mode(passphrase, catalog):
             def recv_fn():
                 return common.recv_msg(conn, max_size=SESSION_MAX_SIZE)
 
-            ok = handle_session_request(send_fn, recv_fn, passphrase, catalog,
-                                        session_list, payload_salt, payload_key)
-            if ok:
+            result = handle_session_request(send_fn, recv_fn, passphrase, catalog,
+                                            session_list, payload_salt, payload_key)
+            if result:
                 with total_lock:
                     total_served += 1
                     n = total_served
                 print(f"  [OK] {client_ip} — Request served ({n} total)", flush=True)
+                if result == "selected" and keep_open_minutes is None:
+                    should_stop.set()
+                    server_sock.close()
 
         except Exception as e:
             print(f"  [ERROR] {client_ip}: {e}", file=sys.stderr, flush=True)
         finally:
             conn.close()
 
-    def shutdown(signum, frame):
-        print(f"\nSharing stopped. Total served: {total_served} request(s).", flush=True)
+    def cleanup():
         if mdns_proc:
             mdns_proc.terminate()
+
+    def shutdown(signum, frame):
+        print(f"\nSharing stopped. Total served: {total_served} request(s).", flush=True)
+        cleanup()
         server_sock.close()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    print(f"Sharing sessions '{service_name}' on port {port}", flush=True)
-    print(f"Sharing {len(session_list)} session(s) until Ctrl+C...\n", flush=True)
+    # Timer thread for --keep-open deadline
+    if deadline:
+        def timer_thread():
+            remaining = deadline - time.time()
+            if remaining > 0:
+                should_stop.wait(timeout=remaining)
+            if not should_stop.is_set():
+                should_stop.set()
+                try:
+                    server_sock.close()
+                except OSError:
+                    pass
+        t = threading.Thread(target=timer_thread, daemon=True)
+        t.start()
 
-    while True:
+    print(f"Sharing sessions '{service_name}' on port {port}", flush=True)
+    if keep_open_minutes is not None:
+        print(f"Sharing {len(session_list)} session(s) for {keep_open_minutes} minute(s)...\n", flush=True)
+    else:
+        print(f"Sharing {len(session_list)} session(s) (will stop after first download)...\n", flush=True)
+
+    while not should_stop.is_set():
         try:
             conn, addr = server_sock.accept()
             t = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
@@ -228,10 +256,13 @@ def lan_mode(passphrase, catalog):
         except OSError:
             break
 
+    cleanup()
+    print(f"\nSharing complete. {total_served} request(s) served.", flush=True)
+
 
 # --------------- Relay Mode ---------------
 
-async def relay_mode(passphrase, catalog, relay_url):
+async def relay_mode(passphrase, catalog, relay_url, keep_open_minutes=None):
     try:
         import websockets
     except ImportError:
@@ -244,6 +275,7 @@ async def relay_mode(passphrase, catalog, relay_url):
     payload_key = common.derive_key(passphrase, payload_salt)
 
     total_served = 0
+    deadline = time.time() + keep_open_minutes * 60 if keep_open_minutes else None
 
     print(f"Connecting to relay server... ({relay_url})", flush=True)
 
@@ -260,11 +292,24 @@ async def relay_mode(passphrase, catalog, relay_url):
         print(f"Room created: {room_id}", flush=True)
         print(f"Tell the receiver to run: /sessions-receive --relay --room {room_id} <passphrase>",
               flush=True)
-        print(f"Sharing {len(session_list)} session(s) until Ctrl+C...\n", flush=True)
+        if keep_open_minutes is not None:
+            print(f"Sharing {len(session_list)} session(s) for {keep_open_minutes} minute(s)...\n", flush=True)
+        else:
+            print(f"Sharing {len(session_list)} session(s) (will stop after first download)...\n", flush=True)
 
-        # Loop: wait for peers (same pattern as distill serve.py)
+        # Loop: wait for peers
         while True:
-            control = await common.recv_msg_ws(ws)
+            try:
+                if deadline:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        break
+                    control = await asyncio.wait_for(common.recv_msg_ws(ws), timeout=remaining)
+                else:
+                    control = await common.recv_msg_ws(ws)
+            except asyncio.TimeoutError:
+                break
+
             if not control:
                 break
 
@@ -272,19 +317,22 @@ async def relay_mode(passphrase, catalog, relay_url):
 
             if msg_type == "PEER_JOINED":
                 try:
-                    ok = await handle_peer_ws(ws, passphrase, catalog, session_list,
-                                              payload_salt, payload_key)
-                    if ok:
+                    result = await handle_peer_ws(ws, passphrase, catalog, session_list,
+                                                  payload_salt, payload_key)
+                    if result:
                         total_served += 1
                         print(f"  [OK] Request served ({total_served} total)", flush=True)
+                    if result == "selected" and keep_open_minutes is None:
+                        break
                 except Exception as e:
                     print(f"  [ERROR] Error handling peer: {e}", file=sys.stderr, flush=True)
 
             elif msg_type == "PEER_DISCONNECTED":
-                # Peer left before or after handshake, continue waiting
                 continue
             else:
                 print(f"  [RELAY] {control}", flush=True)
+
+    print(f"\nSharing complete. {total_served} request(s) served.", flush=True)
 
 
 async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, payload_key):
@@ -353,7 +401,7 @@ async def handle_peer_ws(ws, passphrase, catalog, session_list, payload_salt, pa
 
             # Wait for ACK, but handle peer disconnect gracefully
             msg = await common.recv_msg_ws(ws)
-            return True
+            return "selected"
 
         elif msg_type == "DONE":
             return True
@@ -367,6 +415,7 @@ def main():
     args = sys.argv[1:]
     relay_url = None
     use_relay = False
+    keep_open_minutes = None
 
     filtered_args = []
     i = 0
@@ -379,12 +428,23 @@ def main():
             else:
                 relay_url = DEFAULT_RELAY_URL
                 i += 1
+        elif args[i] == "--keep-open":
+            if i + 1 >= len(args):
+                print("Error: --keep-open requires a number of minutes", file=sys.stderr)
+                sys.exit(1)
+            try:
+                keep_open_minutes = int(args[i + 1])
+            except ValueError:
+                print(f"Error: --keep-open value must be an integer, got '{args[i + 1]}'",
+                      file=sys.stderr)
+                sys.exit(1)
+            i += 2
         else:
             filtered_args.append(args[i])
             i += 1
 
     if len(filtered_args) < 2:
-        print("Usage: serve_sessions.py [--relay [url]] <passphrase> <catalog_file>",
+        print("Usage: serve_sessions.py [--relay [url]] [--keep-open <minutes>] <passphrase> <catalog_file>",
               file=sys.stderr)
         sys.exit(1)
 
@@ -397,9 +457,9 @@ def main():
         sys.exit(1)
 
     if use_relay:
-        asyncio.run(relay_mode(passphrase, catalog, relay_url))
+        asyncio.run(relay_mode(passphrase, catalog, relay_url, keep_open_minutes))
     else:
-        lan_mode(passphrase, catalog)
+        lan_mode(passphrase, catalog, keep_open_minutes)
 
 
 if __name__ == "__main__":
